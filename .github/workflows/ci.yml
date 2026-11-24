@@ -1,0 +1,22 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install numpy opencv-python-headless pytest
+      - name: Course rule (OpenCV for I/O only)
+        run: python scripts/check_rules.py
+      - name: Skeleton wiring (must always pass)
+        run: python -m pytest tests/test_wiring.py -q
+      - name: All module tests (red until each TODO is implemented)
+        run: python -m pytest -q
+        continue-on-error: true

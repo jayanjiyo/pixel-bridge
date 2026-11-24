@@ -221,3 +221,20 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.vs/
+*.user
+.venv/
+venv/
+env/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+# outputs (keep the folder)
+results/*
+!results/.gitkeep
+# submission zips
+*.zip
