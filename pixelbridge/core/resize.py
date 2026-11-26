@@ -92,6 +92,16 @@ def _linear_kernel(d: np.ndarray) -> np.ndarray:
     return np.clip(1.0 - np.abs(d), 0.0, None)
 
 
+def _cubic_kernel(a: float):
+    """Keys cubic convolution kernel with parameter a."""
+    def k(d: np.ndarray) -> np.ndarray:
+        x = np.abs(d)
+        near = (a + 2) * x ** 3 - (a + 3) * x ** 2 + 1                 # |x| <= 1
+        far = a * x ** 3 - 5 * a * x ** 2 + 8 * a * x - 4 * a           # 1 < |x| < 2
+        return np.where(x <= 1, near, np.where(x < 2, far, 0.0))
+    return k
+
+
 def resize_bilinear(img: np.ndarray, out_h: int, out_w: int) -> np.ndarray:
     """Bilinear interpolation with pixel-center alignment and replicate
     border. Matches cv2.resize(..., INTER_LINEAR) within 1 for uint8
@@ -105,8 +115,12 @@ def resize_bicubic(img: np.ndarray, out_h: int, out_w: int, a: float = -0.5) -> 
     """Bicubic (cubic convolution, Keys 1981) with parameter `a`.
 
     Keys uses a = -0.5 (our default, as in the plan report).
-    OpenCV uses a = -0.75; with a = -0.75 the result must match
+    OpenCV uses a = -0.75; with a = -0.75 the result matches
     cv2.resize(..., INTER_CUBIC) within 2 for uint8 upscaling.
     4x4 neighborhood, pixel-center alignment, replicate border.
+    uint8 results are clipped to 0..255 (cubic weights can overshoot).
     """
-    raise NotImplementedError("TODO(M1): resize_bicubic")
+    h, w = img.shape[:2]
+    k = _cubic_kernel(a)
+    taps = (-1, 0, 1, 2)
+    return _apply_separable(img, _interp_weights(h, out_h, taps, k), _interp_weights(w, out_w, taps, k))
