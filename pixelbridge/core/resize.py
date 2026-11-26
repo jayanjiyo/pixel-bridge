@@ -88,11 +88,17 @@ def _interp_weights(n_in: int, n_out: int, taps: tuple[int, ...], kernel) -> np.
     return w
 
 
+def _linear_kernel(d: np.ndarray) -> np.ndarray:
+    return np.clip(1.0 - np.abs(d), 0.0, None)
+
+
 def resize_bilinear(img: np.ndarray, out_h: int, out_w: int) -> np.ndarray:
     """Bilinear interpolation with pixel-center alignment and replicate
-    border. Must match cv2.resize(..., INTER_LINEAR) within 1 for uint8
+    border. Matches cv2.resize(..., INTER_LINEAR) within 1 for uint8
     upscaling (the test uses OpenCV only as a reference)."""
-    raise NotImplementedError("TODO(M1): resize_bilinear")
+    h, w = img.shape[:2]
+    return _apply_separable(img, _interp_weights(h, out_h, (0, 1), _linear_kernel),
+                            _interp_weights(w, out_w, (0, 1), _linear_kernel))
 
 
 def resize_bicubic(img: np.ndarray, out_h: int, out_w: int, a: float = -0.5) -> np.ndarray:
