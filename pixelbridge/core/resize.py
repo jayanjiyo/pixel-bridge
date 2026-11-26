@@ -69,6 +69,25 @@ def resize_nearest(img: np.ndarray, out_h: int, out_w: int) -> np.ndarray:
     return img[ys][:, xs].copy()
 
 
+def _interp_weights(n_in: int, n_out: int, taps: tuple[int, ...], kernel) -> np.ndarray:
+    """(n_out, n_in) weight matrix for kernel interpolation along one axis.
+
+    Output pixel i samples the input at src = (i + 0.5) * n_in / n_out - 0.5
+    (pixel-center alignment, as in OpenCV). With x0 = floor(src) and
+    t = src - x0, input pixel x0 + k gets weight kernel(k - t) for each k in
+    `taps`. Indices outside the image are clamped to the edge (replicate).
+    """
+    src = (np.arange(n_out) + 0.5) * (n_in / n_out) - 0.5
+    x0 = np.floor(src).astype(int)
+    t = src - x0
+    w = np.zeros((n_out, n_in))
+    rows = np.arange(n_out)
+    for k in taps:
+        idx = np.clip(x0 + k, 0, n_in - 1)
+        np.add.at(w, (rows, idx), kernel(k - t))
+    return w
+
+
 def resize_bilinear(img: np.ndarray, out_h: int, out_w: int) -> np.ndarray:
     """Bilinear interpolation with pixel-center alignment and replicate
     border. Must match cv2.resize(..., INTER_LINEAR) within 1 for uint8
