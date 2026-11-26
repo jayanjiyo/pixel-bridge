@@ -42,13 +42,38 @@ def filter2d(img: np.ndarray, kernel: np.ndarray) -> np.ndarray:
     kernel : (kh, kw) with odd kh, kw
     Border : replicate (use `neighbor`)
     Returns float32 of the same shape as img.
+
+    Implementation: one shifted copy of the image per kernel entry, so the
+    Python loop runs kh * kw times, never once per pixel.
     """
-    raise NotImplementedError("TODO(M1): filter2d")
+    kernel = np.asarray(kernel, dtype=np.float32)
+    kh, kw = kernel.shape
+    if kh % 2 == 0 or kw % 2 == 0:
+        raise ValueError(f"kernel size must be odd, got {kernel.shape}")
+    src = img.astype(np.float32)
+    out = np.zeros_like(src)
+    ry, rx = kh // 2, kw // 2
+    for i in range(kh):
+        for j in range(kw):
+            w = kernel[i, j]
+            if w != 0:
+                out += w * neighbor(src, i - ry, j - rx)
+    return out
 
 
 def gaussian_kernel(size: int, sigma: float) -> np.ndarray:
     """2D Gaussian kernel (size x size, size odd), float32, sums to 1."""
-    raise NotImplementedError("TODO(M1): gaussian_kernel")
+    if size % 2 == 0 or size < 1:
+        raise ValueError(f"size must be a positive odd number, got {size}")
+    ax = np.arange(size, dtype=np.float64) - size // 2
+    g = np.exp(-(ax ** 2) / (2.0 * sigma ** 2))
+    k = np.outer(g, g)
+    return (k / k.sum()).astype(np.float32)
+
+
+_SOBEL_X = np.array([[-1, 0, 1],
+                     [-2, 0, 2],
+                     [-1, 0, 1]], dtype=np.float32)
 
 
 def sobel(gray: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -58,9 +83,10 @@ def sobel(gray: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     gets brighter to the right), gy is its transpose (positive when the
     image gets brighter downward). Returns (gx, gy) as float32.
     """
-    raise NotImplementedError("TODO(M1): sobel")
+    return filter2d(gray, _SOBEL_X), filter2d(gray, _SOBEL_X.T)
 
 
 def gradient_magnitude(gray: np.ndarray) -> np.ndarray:
     """sqrt(gx^2 + gy^2) from `sobel`. Returns float32 (H, W)."""
-    raise NotImplementedError("TODO(M1): gradient_magnitude")
+    gx, gy = sobel(gray)
+    return np.sqrt(gx * gx + gy * gy).astype(np.float32)

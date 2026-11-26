@@ -21,20 +21,52 @@ from __future__ import annotations
 import numpy as np
 
 
+def _apply_separable(img: np.ndarray, wy: np.ndarray, wx: np.ndarray) -> np.ndarray:
+    """out = Wy @ img @ Wx^T for every channel, then back to the input dtype.
+
+    wy : (out_h, H) row weights, wx : (out_w, W) column weights. Every
+    resize method here is separable, so it only has to build these two
+    small weight matrices; the products are plain NumPy arithmetic.
+    """
+    src = img.astype(np.float64)
+    out = np.tensordot(wy, src, axes=(1, 0))                 # (out_h, W, ...)
+    out = np.moveaxis(np.tensordot(wx, out, axes=(1, 1)), 0, 1)  # (out_h, out_w, ...)
+    if img.dtype == np.uint8:
+        return np.clip(np.round(out), 0, 255).astype(np.uint8)
+    return out.astype(img.dtype)
+
+
+def _area_weights(n_in: int, n_out: int) -> np.ndarray:
+    """(n_out, n_in) matrix: output pixel i covers [i*s, (i+1)*s) of the
+    input with s = n_in / n_out; weight = overlap length / s."""
+    s = n_in / n_out
+    lo = np.arange(n_out)[:, None] * s                       # start of each output cell
+    hi = lo + s
+    j = np.arange(n_in)[None, :]                             # input pixel j covers [j, j+1)
+    overlap = np.clip(np.minimum(hi, j + 1) - np.maximum(lo, j), 0, None)
+    return overlap / overlap.sum(axis=1, keepdims=True)
+
+
 def resize_area(img: np.ndarray, out_h: int, out_w: int) -> np.ndarray:
     """Shrink by area averaging: each output pixel is the average of the
     input pixels it covers (weighted by overlap for non-integer factors).
     For an integer factor k this equals the mean of each k x k block.
     Only needs to support shrinking (out_h <= H and out_w <= W).
     """
-    raise NotImplementedError("TODO(M1): resize_area")
+    h, w = img.shape[:2]
+    if out_h > h or out_w > w:
+        raise ValueError(f"resize_area only shrinks: {h}x{w} -> {out_h}x{out_w}")
+    return _apply_separable(img, _area_weights(h, out_h), _area_weights(w, out_w))
 
 
 def resize_nearest(img: np.ndarray, out_h: int, out_w: int) -> np.ndarray:
     """Nearest neighbor. Source index = floor(dst * in_size / out_size)
     (OpenCV INTER_NEAREST rule). For an integer upscale factor this is
     exactly np.repeat along both axes."""
-    raise NotImplementedError("TODO(M1): resize_nearest")
+    h, w = img.shape[:2]
+    ys = np.minimum((np.arange(out_h) * h) // out_h, h - 1)
+    xs = np.minimum((np.arange(out_w) * w) // out_w, w - 1)
+    return img[ys][:, xs].copy()
 
 
 def resize_bilinear(img: np.ndarray, out_h: int, out_w: int) -> np.ndarray:
