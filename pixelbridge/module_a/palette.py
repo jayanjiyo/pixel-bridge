@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from pixelbridge.core.color import lab_to_rgb, rgb_to_lab
+
 
 def _hex(colors: list[str]) -> np.ndarray:
     return np.array([[int(c[i:i + 2], 16) for i in (1, 3, 5)] for c in colors], dtype=np.uint8)
@@ -37,7 +39,38 @@ def median_cut(img: np.ndarray, n_colors: int) -> np.ndarray:
 
     img: (H, W, 3) uint8 -> palette (K, 3) uint8 with K <= n_colors
     """
-    raise NotImplementedError("TODO(M2): median_cut")
+    n_colors = max(1, int(n_colors))
+    pixels = img.reshape(-1, 3)
+    if len(pixels) == 0:
+        return np.zeros((0, 3), dtype=np.uint8)
+
+    boxes: list[np.ndarray] = [pixels]
+    while len(boxes) < n_colors:
+        best_idx = -1
+        best_range = 0
+        best_ch = 0
+        for idx, box in enumerate(boxes):
+            if len(box) < 2:
+                continue
+            ranges = box.max(axis=0).astype(np.int32) - box.min(axis=0).astype(np.int32)
+            ch = int(np.argmax(ranges))
+            r = int(ranges[ch])
+            if r > best_range:
+                best_range = r
+                best_idx = idx
+                best_ch = ch
+
+        if best_idx == -1 or best_range == 0:
+            break
+
+        box = boxes.pop(best_idx)
+        order = np.argsort(box[:, best_ch], kind="mergesort")
+        sorted_box = box[order]
+        mid = len(sorted_box) // 2
+        boxes.append(sorted_box[:mid])
+        boxes.append(sorted_box[mid:])
+
+    return np.array([np.round(b.mean(axis=0)) for b in boxes], dtype=np.uint8)
 
 
 def kmeans_lab(img: np.ndarray, n_colors: int, init: np.ndarray | None = None,
@@ -49,7 +82,29 @@ def kmeans_lab(img: np.ndarray, n_colors: int, init: np.ndarray | None = None,
     Keep a cluster that becomes empty at its previous center.
     returns (K, 3) uint8 RGB palette (convert the centers back with lab_to_rgb).
     """
-    raise NotImplementedError("TODO(M2): kmeans_lab")
+    init_rgb = median_cut(img, n_colors) if init is None else np.asarray(init, dtype=np.uint8)
+    pixels_lab = rgb_to_lab(img.reshape(-1, 3)).astype(np.float32)
+    centers = rgb_to_lab(init_rgb).astype(np.float32)
+    k = len(centers)
+
+    prev_labels: np.ndarray | None = None
+    for _ in range(iterations):
+        diff = pixels_lab[:, None, :] - centers[None, :, :]
+        dist_sq = np.sum(diff * diff, axis=-1)
+        labels = np.argmin(dist_sq, axis=1)
+
+        if prev_labels is not None and np.array_equal(labels, prev_labels):
+            break
+        prev_labels = labels
+
+        counts = np.bincount(labels, minlength=k)
+        non_empty = counts > 0
+        for ch in range(3):
+            sums = np.bincount(labels, weights=pixels_lab[:, ch], minlength=k)
+            centers[non_empty, ch] = sums[non_empty] / counts[non_empty]
+
+    rgb_float = lab_to_rgb(centers)
+    return np.clip(np.round(rgb_float * 255.0), 0, 255).astype(np.uint8)
 
 
 def map_to_palette(img: np.ndarray, palette: np.ndarray) -> np.ndarray:
@@ -58,4 +113,11 @@ def map_to_palette(img: np.ndarray, palette: np.ndarray) -> np.ndarray:
     img (H, W, 3) uint8, palette (K, 3) uint8 -> indices (H, W) int32
     Vectorize: distances of shape (H*W, K) are fine for pixel art sizes.
     """
-    raise NotImplementedError("TODO(M2): map_to_palette")
+    h, w = img.shape[:2]
+    pixels_lab = rgb_to_lab(img.reshape(-1, 3)).astype(np.float32)
+    pal_lab = rgb_to_lab(palette).astype(np.float32)
+
+    diff = pixels_lab[:, None, :] - pal_lab[None, :, :]
+    dist_sq = np.sum(diff * diff, axis=-1)
+    indices = np.argmin(dist_sq, axis=1).astype(np.int32)
+    return indices.reshape(h, w)
