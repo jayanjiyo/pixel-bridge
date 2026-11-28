@@ -25,12 +25,21 @@ def read_image(path: str, background=(255, 255, 255)) -> np.ndarray:
     - Images with an alpha channel (RGBA sprites) are composited over
       `background` (an RGB tuple).
     - 16-bit images are reduced to 8 bits.
+    - Phone photos are turned upright (the EXIF orientation is applied).
     - Works with non-ASCII (e.g. Korean) paths on Windows.
     """
     data = np.fromfile(path, dtype=np.uint8)
     img = cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
     if img is None:
         raise ValueError(f"Cannot decode image: {path}")
+    if img.dtype == np.uint8 and img.ndim == 3 and img.shape[2] == 3:
+        # A phone stores a portrait photo sideways plus an EXIF note "rotate me".
+        # IMREAD_UNCHANGED ignores that note; IMREAD_COLOR applies it. Only plain
+        # 8-bit color images are decoded again, so alpha and 16-bit files keep
+        # the handling below.
+        upright = cv2.imdecode(data, cv2.IMREAD_COLOR)
+        if upright is not None:
+            img = upright
     if img.dtype == np.uint16:
         img = (img >> 8).astype(np.uint8)
     elif img.dtype != np.uint8:
