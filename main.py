@@ -74,10 +74,19 @@ def run_roundtrip(args) -> None:
 
 def run_chara(args) -> None:
     from pixelbridge.character import compose_scene, default_background, make_character, pixel_background
-    box = tuple(args.head) if args.head else None
+    from pixelbridge.character.detect import find_head_box
+    photo = read_image(args.input)
+    if args.head:
+        box = tuple(args.head)
+    else:
+        box, found = find_head_box(photo, return_found=True)
+        if not found:
+            print("warning: no clear face found in the photo, so the character may not look like it.\n"
+                  "         Use a front-facing photo of one person, or set the head box with "
+                  "--head X0 Y0 X1 Y1.")
     auto = lambda v: None if v == "auto" else v  # noqa: E731
     flag = {"auto": None, "yes": True, "no": False}
-    character = make_character(read_image(args.input), head_box=box,
+    character = make_character(photo, head_box=box,
                                length=auto(args.hair), bangs=auto(args.bangs),
                                smile=flag[args.smile], happy_eyes=flag[args.happy_eyes])
     if args.bg:

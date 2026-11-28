@@ -40,18 +40,45 @@ def largest_component(mask: np.ndarray, max_iter: int = 400) -> np.ndarray:
     return labels == ids[np.argmax(counts)]
 
 
-def find_head_box(photo: np.ndarray) -> tuple[int, int, int, int]:
-    """Head box (x0, y0, x1, y1) from the largest skin region, or a centered box if none."""
+# A skin region looks like a face when it is big enough, fills its bounding box
+# (a face is a solid oval, not a thin strip or a scattered texture) and is a bit
+# taller than wide. Checked on data/photos: the two photos with a face pass,
+# the 18 without one (animals, food, scenery, a crowd far away) fail.
+FACE_MIN_AREA = 0.04       # fraction of the image
+FACE_MIN_FILL = 0.50       # region pixels / bounding box pixels
+FACE_ASPECT = (0.9, 2.0)   # bounding box height / width
+
+
+def looks_like_face(face: np.ndarray) -> bool:
+    """True if the skin region (boolean mask) has the size and shape of a face."""
+    n = int(face.sum())
+    if n == 0:
+        return False
+    ys, xs = np.nonzero(face)
+    bh, bw = np.ptp(ys) + 1, np.ptp(xs) + 1
+    return bool(n / face.size >= FACE_MIN_AREA and n / (bh * bw) >= FACE_MIN_FILL
+                and FACE_ASPECT[0] <= bh / bw <= FACE_ASPECT[1])
+
+
+def find_head_box(photo: np.ndarray, return_found: bool = False):
+    """Head box (x0, y0, x1, y1) from the largest skin region, or a centered box if none.
+
+    With return_found=True, returns (box, found): found is False when no region
+    looks like a face (see looks_like_face), so the caller can warn the user.
+    """
     h, w = photo.shape[:2]
     s = 128 / max(h, w)
     small = resize.resize_area(photo, max(1, round(h * s)), max(1, round(w * s)))
     face = largest_component(skin_mask(small))
+    found = looks_like_face(face)
     if face.sum() < 20:
-        return int(w * 0.25), int(h * 0.1), int(w * 0.75), int(h * 0.7)
+        box = int(w * 0.25), int(h * 0.1), int(w * 0.75), int(h * 0.7)
+        return (box, False) if return_found else box
     ys, xs = np.nonzero(face)
     fy0, fy1 = ys.min() / s, ys.max() / s
     cx, fw = xs.mean() / s, (xs.max() - xs.min()) / s
     fh = fy1 - fy0
     x0, x1 = cx - 0.85 * fw, cx + 0.85 * fw
     y0, y1 = fy0 - 0.45 * fh, fy1 + 0.10 * fh
-    return (int(max(0, x0)), int(max(0, y0)), int(min(w, x1)), int(min(h, y1)))
+    box = (int(max(0, x0)), int(max(0, y0)), int(min(w, x1)), int(min(h, y1)))
+    return (box, found) if return_found else box

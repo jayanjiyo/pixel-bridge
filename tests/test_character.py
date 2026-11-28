@@ -108,3 +108,15 @@ def test_overrides_change_the_sprite():
     assert edited.image.shape != base.image.shape or (edited.image != base.image).any()
     again = render_character(edited.attrs)        # rendering is deterministic
     assert np.array_equal(again.image, edited.image)
+
+
+def test_find_head_box_reports_missing_face():
+    box, found = find_head_box(portrait(), return_found=True)
+    assert found and box == find_head_box(portrait())
+    scenery = np.zeros((200, 300, 3), np.uint8)
+    scenery[:100] = (120, 170, 230)                      # sky
+    scenery[100:] = (90, 140, 70)                        # grass, no skin at all
+    assert find_head_box(scenery, return_found=True)[1] is False
+    strip = scenery.copy()
+    strip[150:160, :] = (232, 188, 160)                  # skin-colored but a thin strip
+    assert find_head_box(strip, return_found=True)[1] is False
