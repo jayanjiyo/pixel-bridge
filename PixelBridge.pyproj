@@ -24,6 +24,12 @@
   <ItemGroup>
     <Compile Include="main.py" />
     <Compile Include="pixelbridge\__init__.py" />
+    <Compile Include="pixelbridge\character\__init__.py" />
+    <Compile Include="pixelbridge\character\detect.py" />
+    <Compile Include="pixelbridge\character\hair.py" />
+    <Compile Include="pixelbridge\character\measure.py" />
+    <Compile Include="pixelbridge\character\scene.py" />
+    <Compile Include="pixelbridge\character\sprite.py" />
     <Compile Include="pixelbridge\core\__init__.py" />
     <Compile Include="pixelbridge\core\color.py" />
     <Compile Include="pixelbridge\core\filters.py" />
@@ -52,6 +58,7 @@
     <Compile Include="scripts\benchmark_b.py" />
     <Compile Include="scripts\check_rules.py" />
     <Compile Include="scripts\gen_vsproj.py" />
+    <Compile Include="tests\test_character.py" />
     <Compile Include="tests\test_core.py" />
     <Compile Include="tests\test_evaluation.py" />
     <Compile Include="tests\test_module_a_back.py" />
@@ -65,6 +72,7 @@
     <Content Include="pytest.ini" />
     <Content Include="requirements.txt" />
     <Content Include="data\README.md" />
+    <Content Include="data\SOURCES.md" />
     <Content Include="docs\PLAN.md" />
     <Content Include="docs\ko\CONTRIBUTING.md" />
     <Content Include="docs\ko\DATA.md" />
@@ -76,6 +84,7 @@
     <Folder Include="docs\" />
     <Folder Include="docs\ko\" />
     <Folder Include="pixelbridge\" />
+    <Folder Include="pixelbridge\character\" />
     <Folder Include="pixelbridge\core\" />
     <Folder Include="pixelbridge\evaluation\" />
     <Folder Include="pixelbridge\gui\" />
