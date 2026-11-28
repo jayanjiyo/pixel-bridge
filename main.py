@@ -5,7 +5,7 @@
     python main.py a  PHOTO OUT.png  [--width 64 --colors 16 --dither fs ...]
     python main.py b  SPRITE OUT.png [--scale 4 --method ours --mode palette]
     python main.py roundtrip PHOTO OUTDIR [--width 64 --scale 4 --method ours]
-    python main.py chara PHOTO OUT.png [--bg LANDMARK.jpg --x 0.25 --scale 4 --shared-palette]
+    python main.py chara PHOTO OUT.png [--bg LANDMARK.jpg --bangs full --hair short --shared-palette]
 
 Run `python main.py a -h` (or b, roundtrip) for all options.
 """
@@ -75,7 +75,11 @@ def run_roundtrip(args) -> None:
 def run_chara(args) -> None:
     from pixelbridge.character import compose_scene, default_background, make_character, pixel_background
     box = tuple(args.head) if args.head else None
-    character = make_character(read_image(args.input), head_box=box)
+    auto = lambda v: None if v == "auto" else v  # noqa: E731
+    flag = {"auto": None, "yes": True, "no": False}
+    character = make_character(read_image(args.input), head_box=box,
+                               length=auto(args.hair), bangs=auto(args.bangs),
+                               smile=flag[args.smile], happy_eyes=flag[args.happy_eyes])
     if args.bg:
         background, palette = pixel_background(read_image(args.bg), width=args.bg_width, n_colors=args.bg_colors)
     else:
@@ -125,6 +129,10 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("output")
     c.add_argument("--head", type=int, nargs=4, metavar=("X0", "Y0", "X1", "Y1"),
                    help="head box in the photo (default: found from skin color)")
+    c.add_argument("--hair", default="auto", choices=["auto", "short", "medium", "long"])
+    c.add_argument("--bangs", default="auto", choices=["auto", "none", "curtain", "full", "side"])
+    c.add_argument("--smile", default="auto", choices=["auto", "yes", "no"])
+    c.add_argument("--happy-eyes", default="auto", choices=["auto", "yes", "no"])
     c.add_argument("--bg", help="your own landmark photo for the background (default: built-in Namsan scene)")
     c.add_argument("--bg-width", type=int, default=128)
     c.add_argument("--bg-colors", type=int, default=24)
