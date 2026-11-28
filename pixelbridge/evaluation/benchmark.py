@@ -80,8 +80,6 @@ def benchmark_module_a(paths, params: PixelArtParams | None = None) -> list[dict
     rows = []
     for path in paths:
         photo = read_image(path)
-        h, w = target_size(photo.shape[0], photo.shape[1], p.out_width)
-        reference = resize.resize_area(photo, h, w)
 
         t0 = time.perf_counter()
         ours = photo_to_pixel_art(photo, p).image
@@ -92,6 +90,10 @@ def benchmark_module_a(paths, params: PixelArtParams | None = None) -> list[dict
         t_base = time.perf_counter() - t0
 
         for name, out, seconds in (("ours", ours, t_ours), ("baseline", base, t_base)):
+            # Reference at the size of THIS output: the pipeline resizes to
+            # working_size first, so its size can differ by 1 px from
+            # target_size() on the full photo (e.g. 1024x679 -> 96 vs 97 rows).
+            reference = resize.resize_area(photo, out.shape[0], out.shape[1])
             rows.append({
                 "file": os.path.basename(path), "method": name,
                 "delta_e": metrics.mean_delta_e(reference, out),
