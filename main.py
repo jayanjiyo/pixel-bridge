@@ -5,7 +5,7 @@
     python main.py a  PHOTO OUT.png  [--width 64 --colors 16 --dither fs ...]
     python main.py b  SPRITE OUT.png [--scale 4 --method ours --mode palette]
     python main.py roundtrip PHOTO OUTDIR [--width 64 --scale 4 --method ours]
-    python main.py chara PHOTO OUT.png [--bg LANDMARK.jpg --bangs full --hair short --shared-palette]
+    python main.py chara PHOTO OUT.png [--bg hangang|random|LANDMARK.jpg --bangs full --hair short --shared-palette]
 
 Run `python main.py a -h` (or b, roundtrip) for all options.
 """
@@ -75,7 +75,7 @@ def run_roundtrip(args) -> None:
 def run_chara(args) -> None:
     from dataclasses import replace
 
-    from pixelbridge.character import (analyze, compose_scene, default_background, measure_attributes,
+    from pixelbridge.character import (LANDMARKS, analyze, compose_scene, landmark_background, measure_attributes,
                                        pixel_background, render_character)
     photo = read_image(args.input)
     if args.head:
@@ -95,10 +95,12 @@ def run_chara(args) -> None:
     if changes["length"] or changes["bangs"]:
         attrs = replace(attrs, hair_shape=None)         # a chosen hairstyle is drawn from the templates
     character = render_character(replace(attrs, **{k: v for k, v in changes.items() if v is not None}))
-    if args.bg:
-        background, palette = pixel_background(read_image(args.bg), width=args.bg_width, n_colors=args.bg_colors)
+    if args.bg in LANDMARKS or args.bg == "random":
+        name, background = landmark_background(args.bg)
+        palette = None
+        print(f"background: {LANDMARKS[name][0]}")
     else:
-        background, palette = default_background(), None
+        background, palette = pixel_background(read_image(args.bg), width=args.bg_width, n_colors=args.bg_colors)
     scene = compose_scene(background, character, x=args.x, ground=args.ground,
                           palette=palette if args.shared_palette else None)
     big = upscale(scene, args.scale, args.method, "palette")
@@ -151,7 +153,9 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--bangs", default="auto", choices=["auto", "none", "curtain", "full", "side"])
     c.add_argument("--smile", default="auto", choices=["auto", "yes", "no"])
     c.add_argument("--happy-eyes", default="auto", choices=["auto", "yes", "no"])
-    c.add_argument("--bg", help="your own landmark photo for the background (default: built-in Namsan scene)")
+    c.add_argument("--bg", default="namsan",
+                   help="built-in landmark (namsan, gwanghwamun, hangang, lotte, bukchon), random, "
+                        "or your own photo (default: namsan)")
     c.add_argument("--bg-width", type=int, default=128)
     c.add_argument("--bg-colors", type=int, default=24)
     c.add_argument("--x", type=float, default=0.25, help="horizontal position of the character, 0-1")
