@@ -127,7 +127,7 @@ class PixelBridgeApp(tk.Tk):
         self._combo(self.frame_b, "Mode", self.b_mode, ["palette", "smooth"])
 
         self.frame_c = ttk.LabelFrame(left, text="Character", padding=6)
-        self._combo(self.frame_c, "Hair length", self.c_hair, ["auto", "short", "medium", "long"])
+        self._combo(self.frame_c, "Hair length", self.c_hair, ["auto", "crop", "short", "medium", "long"])
         self._combo(self.frame_c, "Bangs", self.c_bangs, ["auto", "none", "curtain", "full", "side"])
         self._combo(self.frame_c, "Smile", self.c_smile, ["auto", "yes", "no"])
         self._combo(self.frame_c, "Smiling eyes", self.c_eyes, ["auto", "yes", "no"])
@@ -274,15 +274,13 @@ class PixelBridgeApp(tk.Tk):
         """Photo -> character -> landmark background -> x4 (Scale2x twice)."""
         from dataclasses import replace
 
-        from ..character import (compose_scene, default_background, measure_attributes,
+        from ..character import (analyze, compose_scene, default_background,
                                  pixel_background, render_character)
-        from ..character.detect import find_head_box
 
         if self._attrs_cache is None or self._attrs_cache[0] is not self.input_img:
             self.status.set("Measuring the face (first run takes a few seconds)...")
             self.update_idletasks()
-            box, found = find_head_box(self.input_img, return_found=True)
-            attrs = measure_attributes(self.input_img, box)
+            attrs, found = analyze(self.input_img)
             self._attrs_cache = (self.input_img, attrs, found)
         attrs, found = self._attrs_cache[1], self._attrs_cache[2]
         flag = {"yes": True, "no": False}
@@ -290,6 +288,10 @@ class PixelBridgeApp(tk.Tk):
         for key, var in (("smile", self.c_smile), ("happy_eyes", self.c_eyes)):
             if var.get() != "auto":
                 changes[key] = flag[var.get()]
+        if changes.get("smile") is False:
+            changes["teeth"] = False                    # "Smile: no" also closes an open smile
+        if "length" in changes or "bangs" in changes:
+            changes["hair_shape"] = None                # a chosen hairstyle is drawn from the templates
         character = render_character(replace(attrs, **changes))
 
         if self.c_bg_path:

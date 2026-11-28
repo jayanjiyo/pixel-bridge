@@ -73,22 +73,28 @@ def run_roundtrip(args) -> None:
 
 
 def run_chara(args) -> None:
-    from pixelbridge.character import compose_scene, default_background, make_character, pixel_background
-    from pixelbridge.character.detect import find_head_box
+    from dataclasses import replace
+
+    from pixelbridge.character import (analyze, compose_scene, default_background, measure_attributes,
+                                       pixel_background, render_character)
     photo = read_image(args.input)
     if args.head:
-        box = tuple(args.head)
+        attrs = measure_attributes(photo, tuple(args.head))
     else:
-        box, found = find_head_box(photo, return_found=True)
+        attrs, found = analyze(photo)
         if not found:
             print("warning: no clear face found in the photo, so the character may not look like it.\n"
                   "         Use a front-facing photo of one person, or set the head box with "
                   "--head X0 Y0 X1 Y1.")
     auto = lambda v: None if v == "auto" else v  # noqa: E731
     flag = {"auto": None, "yes": True, "no": False}
-    character = make_character(photo, head_box=box,
-                               length=auto(args.hair), bangs=auto(args.bangs),
-                               smile=flag[args.smile], happy_eyes=flag[args.happy_eyes])
+    changes = dict(length=auto(args.hair), bangs=auto(args.bangs),
+                   smile=flag[args.smile], happy_eyes=flag[args.happy_eyes])
+    if changes["smile"] is False:
+        changes["teeth"] = False                        # --smile no also closes an open smile
+    if changes["length"] or changes["bangs"]:
+        attrs = replace(attrs, hair_shape=None)         # a chosen hairstyle is drawn from the templates
+    character = render_character(replace(attrs, **{k: v for k, v in changes.items() if v is not None}))
     if args.bg:
         background, palette = pixel_background(read_image(args.bg), width=args.bg_width, n_colors=args.bg_colors)
     else:
@@ -103,6 +109,9 @@ def run_chara(args) -> None:
     print(f"saved {args.output}  {big.shape[1]}x{big.shape[0]}")
     print(f"  head box {' '.join(map(str, a.box))} | hair {a.length}, bangs {a.bangs}, part {a.part:.2f} | "
           f"smile {'yes' if a.smile else 'no'}, happy eyes {'yes' if a.happy_eyes else 'no'}")
+    print(f"  face {a.face}, jaw {a.jaw} | hair {'drawn from the photo' if a.hair_shape is not None else 'template'}, "
+          f"volume {a.volume} | eyebrows {a.brows} | eyes {a.eyes} | teeth {'yes' if a.teeth else 'no'} | "
+          f"beard {a.beard}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -138,7 +147,7 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("output")
     c.add_argument("--head", type=int, nargs=4, metavar=("X0", "Y0", "X1", "Y1"),
                    help="head box in the photo (default: found from skin color)")
-    c.add_argument("--hair", default="auto", choices=["auto", "short", "medium", "long"])
+    c.add_argument("--hair", default="auto", choices=["auto", "crop", "short", "medium", "long"])
     c.add_argument("--bangs", default="auto", choices=["auto", "none", "curtain", "full", "side"])
     c.add_argument("--smile", default="auto", choices=["auto", "yes", "no"])
     c.add_argument("--happy-eyes", default="auto", choices=["auto", "yes", "no"])

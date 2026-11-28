@@ -34,12 +34,28 @@ class Attributes:
     happy_eyes: bool
     bangs: str                      # "none" | "curtain" | "full" | "side"
     part: float                     # hair part position across the head, 0..1 (0.5 = center)
-    length: str                     # "short" | "medium" | "long"
+    length: str                     # "crop" | "short" | "medium" | "long"
     skin: np.ndarray                # RGB float
     hair: np.ndarray
     shirt: np.ndarray
     shadow_side: str | None         # "left" | "right" | None
     scores: dict                    # raw measurements, for debugging and the report
+    # Measured only when the eyes are found (features.measure_from_eyes); the
+    # defaults draw the same sprite as before.
+    face: str = "oval"              # "slim" | "oval" | "round"   (face width / eye distance)
+    jaw: str = "round"              # "round" | "pointed"         (jaw width / cheek width)
+    brows: str = "none"             # "none" | "thin" | "bold"    (how dark the eyebrows are)
+    eyes: str = "big"               # "big" | "small"             (eye height / eye distance)
+    teeth: bool = False             # open smile showing teeth
+    volume: str = "normal"          # "flat" | "normal" | "big"   (hair height above the hairline)
+    hair_shape: np.ndarray | None = None   # hair silhouette from the photo on the sprite grid
+                                           # (hair.SHAPE_ROWS x HEAD_W bool); None = use the templates
+    hair_tone: np.ndarray | None = None    # same grid, -1 / 0 / +1: darker / base / lighter strands
+    hair_colors: tuple | None = None       # (RGB of the darker strands, RGB of the lighter strands) or None each
+    brow_color: np.ndarray | None = None   # RGB of the eyebrows in the photo (None = from the hair color)
+    lip: np.ndarray | None = None          # RGB of the lips in the photo (None = default mouth color)
+    beard: str = "none"                    # "none" | "mustache" | "chin" | "full"
+    eye_color: np.ndarray | None = None    # RGB of a small box at the pupils (None = default dark eyes)
 
 
 def xdog(gray: np.ndarray, sigma: float = 1.5, k: float = 1.6, p: float = 18.0,
