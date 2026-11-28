@@ -75,6 +75,16 @@ class PixelBridgeApp(tk.Tk):
         self.b_scale = tk.IntVar(value=4)
         self.b_method = tk.StringVar(value="ours")
         self.b_mode = tk.StringVar(value="palette")
+        # Character parameters ("auto" = measured from the photo)
+        self.c_hair = tk.StringVar(value="auto")
+        self.c_bangs = tk.StringVar(value="auto")
+        self.c_smile = tk.StringVar(value="auto")
+        self.c_eyes = tk.StringVar(value="auto")
+        self.c_x = tk.DoubleVar(value=0.25)
+        self.c_shared = tk.BooleanVar(value=False)
+        self.c_bg_path = ""
+        self._attrs_cache = None      # (photo id, measured attributes): dropdown changes re-render instantly
+        self._bg_cache = None         # (path, background, palette)
 
         self.status = tk.StringVar(value="Open an image to start.")
         self._images = {}  # keep PhotoImage references alive
@@ -95,6 +105,8 @@ class PixelBridgeApp(tk.Tk):
                         command=self._switch).pack(anchor="w")
         ttk.Radiobutton(left, text="B: Pixel art -> High resolution", value="B",
                         variable=self.direction, command=self._switch).pack(anchor="w")
+        ttk.Radiobutton(left, text="C: Character on a landmark", value="C",
+                        variable=self.direction, command=self._switch).pack(anchor="w")
 
         self.frame_a = ttk.LabelFrame(left, text="Module A", padding=6)
         self._spin(self.frame_a, "Output width", self.a_width, 16, 256, 8)
@@ -113,6 +125,17 @@ class PixelBridgeApp(tk.Tk):
         self._combo(self.frame_b, "Scale", self.b_scale, [2, 3, 4])
         self._combo(self.frame_b, "Method", self.b_method, list(METHODS))
         self._combo(self.frame_b, "Mode", self.b_mode, ["palette", "smooth"])
+
+        self.frame_c = ttk.LabelFrame(left, text="Character", padding=6)
+        self._combo(self.frame_c, "Hair length", self.c_hair, ["auto", "short", "medium", "long"])
+        self._combo(self.frame_c, "Bangs", self.c_bangs, ["auto", "none", "curtain", "full", "side"])
+        self._combo(self.frame_c, "Smile", self.c_smile, ["auto", "yes", "no"])
+        self._combo(self.frame_c, "Smiling eyes", self.c_eyes, ["auto", "yes", "no"])
+        self._scale(self.frame_c, "Position", self.c_x)
+        ttk.Button(self.frame_c, text="Background photo...", command=self.open_background).pack(fill=tk.X, pady=2)
+        self.c_bg_label = ttk.Label(self.frame_c, text="Background: Namsan (built-in)")
+        self.c_bg_label.pack(anchor="w")
+        ttk.Checkbutton(self.frame_c, text="Shared palette", variable=self.c_shared).pack(anchor="w")
 
         self.frame_buttons = ttk.Frame(left)
         ttk.Button(self.frame_buttons, text="Run", command=self.run).pack(fill=tk.X, pady=2)
@@ -158,9 +181,10 @@ class PixelBridgeApp(tk.Tk):
         ttk.Scale(row, from_=0.0, to=1.0, variable=var, length=110).pack(side=tk.LEFT)
 
     def _switch(self):
-        for f in (self.frame_a, self.frame_b, self.frame_buttons):
+        for f in (self.frame_a, self.frame_b, self.frame_c, self.frame_buttons):
             f.pack_forget()
-        (self.frame_a if self.direction.get() == "A" else self.frame_b).pack(fill=tk.X, pady=8)
+        frame = {"A": self.frame_a, "B": self.frame_b, "C": self.frame_c}[self.direction.get()]
+        frame.pack(fill=tk.X, pady=8)
         self.frame_buttons.pack(fill=tk.X, pady=8)
         self.btn_compare.configure(state=tk.NORMAL if self.direction.get() == "B" else tk.DISABLED)
 
@@ -184,8 +208,9 @@ class PixelBridgeApp(tk.Tk):
             return
         self.input_path = path
         h, w = self.input_img.shape[:2]
-        # small images are probably pixel art -> switch to Module B
-        self.direction.set("B" if max(h, w) <= 256 else "A")
+        # small images are probably pixel art -> switch to Module B (character mode stays)
+        if self.direction.get() != "C":
+            self.direction.set("B" if max(h, w) <= 256 else "A")
         self._switch()
         self._show(self.view_in, self.input_img, f"{os.path.basename(path)}  {w}x{h}")
         self.status.set("Loaded. Choose parameters and press Run.")
@@ -212,6 +237,8 @@ class PixelBridgeApp(tk.Tk):
                 total = sum(result.timings.values())
                 detail = ", ".join(f"{k} {v:.2f}s" for k, v in result.timings.items())
                 self.status.set(f"Module A done in {total:.2f}s  ({detail})")
+            elif self.direction.get() == "C":
+                self.output_img = self.run_character()
             else:
                 import time
                 t0 = time.perf_counter()
@@ -236,6 +263,47 @@ class PixelBridgeApp(tk.Tk):
             self._show(self.view_out, self.output_img, f"{w}x{h}", zoom=z)
         else:
             self._show(self.view_out, self.output_img, f"{w}x{h}")
+
+    def open_background(self):
+        path = filedialog.askopenfilename(filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp"), ("All files", "*.*")])
+        if path:
+            self.c_bg_path = path
+            self.c_bg_label.configure(text=f"Background: {os.path.basename(path)}")
+
+    def run_character(self) -> np.ndarray:
+        """Photo -> character -> landmark background -> x4 (Scale2x twice)."""
+        from dataclasses import replace
+
+        from ..character import (compose_scene, default_background, measure_attributes,
+                                 pixel_background, render_character)
+        from ..character.detect import find_head_box
+
+        if self._attrs_cache is None or self._attrs_cache[0] is not self.input_img:
+            self.status.set("Measuring the face (first run takes a few seconds)...")
+            self.update_idletasks()
+            attrs = measure_attributes(self.input_img, find_head_box(self.input_img))
+            self._attrs_cache = (self.input_img, attrs)
+        attrs = self._attrs_cache[1]
+        flag = {"yes": True, "no": False}
+        changes = {k: v for k, v in (("length", self.c_hair.get()), ("bangs", self.c_bangs.get())) if v != "auto"}
+        for key, var in (("smile", self.c_smile), ("happy_eyes", self.c_eyes)):
+            if var.get() != "auto":
+                changes[key] = flag[var.get()]
+        character = render_character(replace(attrs, **changes))
+
+        if self.c_bg_path:
+            if self._bg_cache is None or self._bg_cache[0] != self.c_bg_path:
+                bg, pal = pixel_background(read_image(self.c_bg_path))
+                self._bg_cache = (self.c_bg_path, bg, pal)
+            _, background, palette = self._bg_cache
+        else:
+            background, palette = default_background(), None
+        scene = compose_scene(background, character, x=float(self.c_x.get()),
+                              palette=palette if self.c_shared.get() else None)
+        a = character.attrs
+        self.status.set(f"Character: hair {a.length}, bangs {a.bangs}, smile {'yes' if a.smile else 'no'}, "
+                        f"smiling eyes {'yes' if a.happy_eyes else 'no'}  (auto = measured from the photo)")
+        return upscale(scene, 4, "scale2x")
 
     def compare_all(self):
         if self.input_img is None:
