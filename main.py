@@ -5,6 +5,7 @@
     python main.py a  PHOTO OUT.png  [--width 64 --colors 16 --dither fs ...]
     python main.py b  SPRITE OUT.png [--scale 4 --method ours --mode palette]
     python main.py roundtrip PHOTO OUTDIR [--width 64 --scale 4 --method ours]
+    python main.py chara PHOTO OUT.png [--bg LANDMARK.jpg --x 0.25 --scale 4 --shared-palette]
 
 Run `python main.py a -h` (or b, roundtrip) for all options.
 """
@@ -71,6 +72,25 @@ def run_roundtrip(args) -> None:
     print(f"round trip saved in {args.outdir}")
 
 
+def run_chara(args) -> None:
+    from pixelbridge.character import compose_scene, default_background, make_character, pixel_background
+    box = tuple(args.head) if args.head else None
+    character = make_character(read_image(args.input), head_box=box)
+    if args.bg:
+        background, palette = pixel_background(read_image(args.bg), width=args.bg_width, n_colors=args.bg_colors)
+    else:
+        background, palette = default_background(), None
+    scene = compose_scene(background, character, x=args.x, ground=args.ground,
+                          palette=palette if args.shared_palette else None)
+    big = upscale(scene, args.scale, args.method, "palette")
+    write_image(args.output, big)
+    stem, ext = os.path.splitext(args.output)
+    write_image(f"{stem}_sprite{ext or '.png'}", character.image)
+    x0, y0, x1, y1 = character.face.box
+    print(f"saved {args.output}  {big.shape[1]}x{big.shape[0]}  (character {character.image.shape[1]}x"
+          f"{character.image.shape[0]}, head box {x0} {y0} {x1} {y1})")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="PixelBridge", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -98,6 +118,20 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--scale", type=int, default=4, choices=[2, 3, 4])
     r.add_argument("--method", default="ours", choices=METHODS)
     r.add_argument("--mode", default="palette", choices=["palette", "smooth"])
+
+    c = sub.add_parser("chara", help="photo -> chibi pixel character on a pixel background")
+    c.add_argument("input")
+    c.add_argument("output")
+    c.add_argument("--head", type=int, nargs=4, metavar=("X0", "Y0", "X1", "Y1"),
+                   help="head box in the photo (default: found from skin color)")
+    c.add_argument("--bg", help="your own landmark photo for the background (default: built-in Namsan scene)")
+    c.add_argument("--bg-width", type=int, default=128)
+    c.add_argument("--bg-colors", type=int, default=24)
+    c.add_argument("--x", type=float, default=0.25, help="horizontal position of the character, 0-1")
+    c.add_argument("--ground", type=float, default=0.92, help="where the feet stand, 0 (top) - 1 (bottom)")
+    c.add_argument("--shared-palette", action="store_true", help="re-color the character with the background palette")
+    c.add_argument("--scale", type=int, default=4, choices=[2, 3, 4])
+    c.add_argument("--method", default="scale2x", choices=METHODS)
     return parser
 
 
@@ -111,6 +145,8 @@ def main(argv=None) -> int:
             run_a(args)
         elif args.command == "b":
             run_b(args)
+        elif args.command == "chara":
+            run_chara(args)
         else:
             run_roundtrip(args)
     except NotImplementedError as e:
