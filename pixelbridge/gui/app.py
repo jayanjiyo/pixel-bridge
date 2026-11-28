@@ -42,6 +42,12 @@ def zoom_for_display(img: np.ndarray, zoom: int) -> np.ndarray:
     return img[::-zoom, ::-zoom]
 
 
+BG_RANDOM = "Random landmark"
+BG_PHOTO = "My photo..."
+BG_CHOICES = [BG_RANDOM, "N Seoul Tower", "Gwanghwamun", "Hangang bridge",
+              "Lotte World Tower", "Bukchon Hanok", BG_PHOTO]
+
+
 def to_photoimage(img: np.ndarray, max_side: int = VIEW_SIZE, zoom: int | None = None) -> tk.PhotoImage:
     z = display_zoom(img, max_side) if zoom is None else zoom
     data = base64.b64encode(encode_png(zoom_for_display(img, z))).decode("ascii")
@@ -83,6 +89,7 @@ class PixelBridgeApp(tk.Tk):
         self.c_x = tk.DoubleVar(value=0.25)
         self.c_shared = tk.BooleanVar(value=False)
         self.c_bg_path = ""
+        self.c_bg = tk.StringVar(value=BG_CHOICES[1])   # N Seoul Tower
         self._attrs_cache = None      # (photo, measured attributes, face found): dropdown changes re-render instantly
         self._bg_cache = None         # (path, background, palette)
 
@@ -127,14 +134,20 @@ class PixelBridgeApp(tk.Tk):
         self._combo(self.frame_b, "Mode", self.b_mode, ["palette", "smooth"])
 
         self.frame_c = ttk.LabelFrame(left, text="Character", padding=6)
-        self._combo(self.frame_c, "Hair length", self.c_hair, ["auto", "short", "medium", "long"])
+        self._combo(self.frame_c, "Hair length", self.c_hair, ["auto", "crop", "short", "medium", "long"])
         self._combo(self.frame_c, "Bangs", self.c_bangs, ["auto", "none", "curtain", "full", "side"])
         self._combo(self.frame_c, "Smile", self.c_smile, ["auto", "yes", "no"])
         self._combo(self.frame_c, "Smiling eyes", self.c_eyes, ["auto", "yes", "no"])
         self._scale(self.frame_c, "Position", self.c_x)
-        ttk.Button(self.frame_c, text="Background photo...", command=self.open_background).pack(fill=tk.X, pady=2)
-        self.c_bg_label = ttk.Label(self.frame_c, text="Background: Namsan (built-in)")
-        self.c_bg_label.pack(anchor="w")
+        row = ttk.Frame(self.frame_c)
+        row.pack(fill=tk.X, pady=1)
+        ttk.Label(row, text="Background", width=15).pack(side=tk.LEFT)
+        bg_box = ttk.Combobox(row, textvariable=self.c_bg, values=BG_CHOICES, state="readonly", width=16)
+        bg_box.pack(side=tk.LEFT)
+        bg_box.bind("<<ComboboxSelected>>", self._background_changed)
+        self.c_bg_label = ttk.Label(self.frame_c)          # thumbnail of the chosen background
+        self.c_bg_label.pack(anchor="w", pady=2)
+        self._background_changed()
         ttk.Checkbutton(self.frame_c, text="Shared palette", variable=self.c_shared).pack(anchor="w")
 
         self.frame_buttons = ttk.Frame(left)
@@ -264,25 +277,39 @@ class PixelBridgeApp(tk.Tk):
         else:
             self._show(self.view_out, self.output_img, f"{w}x{h}")
 
-    def open_background(self):
-        path = filedialog.askopenfilename(filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp"), ("All files", "*.*")])
-        if path:
+    def _background_changed(self, _event=None):
+        """Dropdown changed: open a file for "My photo...", then refresh the thumbnail."""
+        from ..character import LANDMARKS, landmark_background
+
+        choice = self.c_bg.get()
+        if choice == BG_PHOTO:
+            path = filedialog.askopenfilename(
+                filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp"), ("All files", "*.*")])
+            if not path:
+                self.c_bg.set(BG_CHOICES[1])
+                return self._background_changed()
             self.c_bg_path = path
-            self.c_bg_label.configure(text=f"Background: {os.path.basename(path)}")
+            self.c_bg_label.configure(image="", text=os.path.basename(path))
+            return
+        if choice == BG_RANDOM:
+            self.c_bg_label.configure(image="", text="a new landmark every run")
+            return
+        key = next(k for k, (label, _) in LANDMARKS.items() if label == choice)
+        thumb = to_photoimage(landmark_background(key)[1], zoom=1)
+        self._images["bg_thumb"] = thumb
+        self.c_bg_label.configure(image=thumb, text="")
 
     def run_character(self) -> np.ndarray:
         """Photo -> character -> landmark background -> x4 (Scale2x twice)."""
         from dataclasses import replace
 
-        from ..character import (compose_scene, default_background, measure_attributes,
+        from ..character import (LANDMARKS, analyze, compose_scene, landmark_background,
                                  pixel_background, render_character)
-        from ..character.detect import find_head_box
 
         if self._attrs_cache is None or self._attrs_cache[0] is not self.input_img:
             self.status.set("Measuring the face (first run takes a few seconds)...")
             self.update_idletasks()
-            box, found = find_head_box(self.input_img, return_found=True)
-            attrs = measure_attributes(self.input_img, box)
+            attrs, found = analyze(self.input_img)
             self._attrs_cache = (self.input_img, attrs, found)
         attrs, found = self._attrs_cache[1], self._attrs_cache[2]
         flag = {"yes": True, "no": False}
@@ -290,20 +317,28 @@ class PixelBridgeApp(tk.Tk):
         for key, var in (("smile", self.c_smile), ("happy_eyes", self.c_eyes)):
             if var.get() != "auto":
                 changes[key] = flag[var.get()]
+        if changes.get("smile") is False:
+            changes["teeth"] = False                    # "Smile: no" also closes an open smile
+        if "length" in changes or "bangs" in changes:
+            changes["hair_shape"] = None                # a chosen hairstyle is drawn from the templates
         character = render_character(replace(attrs, **changes))
 
-        if self.c_bg_path:
+        choice, where = self.c_bg.get(), ""
+        if choice == BG_PHOTO and self.c_bg_path:
             if self._bg_cache is None or self._bg_cache[0] != self.c_bg_path:
                 bg, pal = pixel_background(read_image(self.c_bg_path))
                 self._bg_cache = (self.c_bg_path, bg, pal)
             _, background, palette = self._bg_cache
         else:
-            background, palette = default_background(), None
+            key = "random" if choice == BG_RANDOM else next(
+                (k for k, (label, _) in LANDMARKS.items() if label == choice), "namsan")
+            key, background = landmark_background(key)
+            palette, where = None, f"Background: {LANDMARKS[key][0]}.  "
         scene = compose_scene(background, character, x=float(self.c_x.get()),
                               palette=palette if self.c_shared.get() else None)
         a = character.attrs
         warn = "" if found else "No clear face found - use a front-facing photo of one person.  "
-        self.status.set(f"{warn}Character: hair {a.length}, bangs {a.bangs}, smile {'yes' if a.smile else 'no'}, "
+        self.status.set(f"{warn}{where}Character: hair {a.length}, bangs {a.bangs}, smile {'yes' if a.smile else 'no'}, "
                         f"smiling eyes {'yes' if a.happy_eyes else 'no'}  (auto = measured from the photo)")
         return upscale(scene, 4, "scale2x")
 

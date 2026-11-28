@@ -5,7 +5,7 @@
     python main.py a  PHOTO OUT.png  [--width 64 --colors 16 --dither fs ...]
     python main.py b  SPRITE OUT.png [--scale 4 --method ours --mode palette]
     python main.py roundtrip PHOTO OUTDIR [--width 64 --scale 4 --method ours]
-    python main.py chara PHOTO OUT.png [--bg LANDMARK.jpg --bangs full --hair short --shared-palette]
+    python main.py chara PHOTO OUT.png [--bg hangang|random|LANDMARK.jpg --bangs full --hair short --shared-palette]
 
 Run `python main.py a -h` (or b, roundtrip) for all options.
 """
@@ -73,26 +73,34 @@ def run_roundtrip(args) -> None:
 
 
 def run_chara(args) -> None:
-    from pixelbridge.character import compose_scene, default_background, make_character, pixel_background
-    from pixelbridge.character.detect import find_head_box
+    from dataclasses import replace
+
+    from pixelbridge.character import (LANDMARKS, analyze, compose_scene, landmark_background, measure_attributes,
+                                       pixel_background, render_character)
     photo = read_image(args.input)
     if args.head:
-        box = tuple(args.head)
+        attrs = measure_attributes(photo, tuple(args.head))
     else:
-        box, found = find_head_box(photo, return_found=True)
+        attrs, found = analyze(photo)
         if not found:
             print("warning: no clear face found in the photo, so the character may not look like it.\n"
                   "         Use a front-facing photo of one person, or set the head box with "
                   "--head X0 Y0 X1 Y1.")
     auto = lambda v: None if v == "auto" else v  # noqa: E731
     flag = {"auto": None, "yes": True, "no": False}
-    character = make_character(photo, head_box=box,
-                               length=auto(args.hair), bangs=auto(args.bangs),
-                               smile=flag[args.smile], happy_eyes=flag[args.happy_eyes])
-    if args.bg:
-        background, palette = pixel_background(read_image(args.bg), width=args.bg_width, n_colors=args.bg_colors)
+    changes = dict(length=auto(args.hair), bangs=auto(args.bangs),
+                   smile=flag[args.smile], happy_eyes=flag[args.happy_eyes])
+    if changes["smile"] is False:
+        changes["teeth"] = False                        # --smile no also closes an open smile
+    if changes["length"] or changes["bangs"]:
+        attrs = replace(attrs, hair_shape=None)         # a chosen hairstyle is drawn from the templates
+    character = render_character(replace(attrs, **{k: v for k, v in changes.items() if v is not None}))
+    if args.bg in LANDMARKS or args.bg == "random":
+        name, background = landmark_background(args.bg)
+        palette = None
+        print(f"background: {LANDMARKS[name][0]}")
     else:
-        background, palette = default_background(), None
+        background, palette = pixel_background(read_image(args.bg), width=args.bg_width, n_colors=args.bg_colors)
     scene = compose_scene(background, character, x=args.x, ground=args.ground,
                           palette=palette if args.shared_palette else None)
     big = upscale(scene, args.scale, args.method, "palette")
@@ -103,6 +111,9 @@ def run_chara(args) -> None:
     print(f"saved {args.output}  {big.shape[1]}x{big.shape[0]}")
     print(f"  head box {' '.join(map(str, a.box))} | hair {a.length}, bangs {a.bangs}, part {a.part:.2f} | "
           f"smile {'yes' if a.smile else 'no'}, happy eyes {'yes' if a.happy_eyes else 'no'}")
+    print(f"  face {a.face}, jaw {a.jaw} | hair {'drawn from the photo' if a.hair_shape is not None else 'template'}, "
+          f"volume {a.volume} | eyebrows {a.brows} | eyes {a.eyes} | teeth {'yes' if a.teeth else 'no'} | "
+          f"beard {a.beard}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -138,11 +149,13 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("output")
     c.add_argument("--head", type=int, nargs=4, metavar=("X0", "Y0", "X1", "Y1"),
                    help="head box in the photo (default: found from skin color)")
-    c.add_argument("--hair", default="auto", choices=["auto", "short", "medium", "long"])
+    c.add_argument("--hair", default="auto", choices=["auto", "crop", "short", "medium", "long"])
     c.add_argument("--bangs", default="auto", choices=["auto", "none", "curtain", "full", "side"])
     c.add_argument("--smile", default="auto", choices=["auto", "yes", "no"])
     c.add_argument("--happy-eyes", default="auto", choices=["auto", "yes", "no"])
-    c.add_argument("--bg", help="your own landmark photo for the background (default: built-in Namsan scene)")
+    c.add_argument("--bg", default="namsan",
+                   help="built-in landmark (namsan, gwanghwamun, hangang, lotte, bukchon), random, "
+                        "or your own photo (default: namsan)")
     c.add_argument("--bg-width", type=int, default=128)
     c.add_argument("--bg-colors", type=int, default=24)
     c.add_argument("--x", type=float, default=0.25, help="horizontal position of the character, 0-1")

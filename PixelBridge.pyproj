@@ -26,7 +26,10 @@
     <Compile Include="pixelbridge\__init__.py" />
     <Compile Include="pixelbridge\character\__init__.py" />
     <Compile Include="pixelbridge\character\detect.py" />
+    <Compile Include="pixelbridge\character\eyes.py" />
+    <Compile Include="pixelbridge\character\features.py" />
     <Compile Include="pixelbridge\character\hair.py" />
+    <Compile Include="pixelbridge\character\landmarks.py" />
     <Compile Include="pixelbridge\character\measure.py" />
     <Compile Include="pixelbridge\character\scene.py" />
     <Compile Include="pixelbridge\character\sprite.py" />
