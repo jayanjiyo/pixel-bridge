@@ -6,5 +6,6 @@
 
 OWNER: M1 (Leader).
 """
+from .measure import Attributes, measure_attributes  # noqa: F401
 from .sprite import Character, make_character  # noqa: F401
 from .scene import compose_scene, default_background, pixel_background  # noqa: F401
