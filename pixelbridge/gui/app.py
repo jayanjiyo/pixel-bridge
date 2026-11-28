@@ -83,7 +83,7 @@ class PixelBridgeApp(tk.Tk):
         self.c_x = tk.DoubleVar(value=0.25)
         self.c_shared = tk.BooleanVar(value=False)
         self.c_bg_path = ""
-        self._attrs_cache = None      # (photo id, measured attributes): dropdown changes re-render instantly
+        self._attrs_cache = None      # (photo, measured attributes, face found): dropdown changes re-render instantly
         self._bg_cache = None         # (path, background, palette)
 
         self.status = tk.StringVar(value="Open an image to start.")
@@ -281,9 +281,10 @@ class PixelBridgeApp(tk.Tk):
         if self._attrs_cache is None or self._attrs_cache[0] is not self.input_img:
             self.status.set("Measuring the face (first run takes a few seconds)...")
             self.update_idletasks()
-            attrs = measure_attributes(self.input_img, find_head_box(self.input_img))
-            self._attrs_cache = (self.input_img, attrs)
-        attrs = self._attrs_cache[1]
+            box, found = find_head_box(self.input_img, return_found=True)
+            attrs = measure_attributes(self.input_img, box)
+            self._attrs_cache = (self.input_img, attrs, found)
+        attrs, found = self._attrs_cache[1], self._attrs_cache[2]
         flag = {"yes": True, "no": False}
         changes = {k: v for k, v in (("length", self.c_hair.get()), ("bangs", self.c_bangs.get())) if v != "auto"}
         for key, var in (("smile", self.c_smile), ("happy_eyes", self.c_eyes)):
@@ -301,7 +302,8 @@ class PixelBridgeApp(tk.Tk):
         scene = compose_scene(background, character, x=float(self.c_x.get()),
                               palette=palette if self.c_shared.get() else None)
         a = character.attrs
-        self.status.set(f"Character: hair {a.length}, bangs {a.bangs}, smile {'yes' if a.smile else 'no'}, "
+        warn = "" if found else "No clear face found - use a front-facing photo of one person.  "
+        self.status.set(f"{warn}Character: hair {a.length}, bangs {a.bangs}, smile {'yes' if a.smile else 'no'}, "
                         f"smiling eyes {'yes' if a.happy_eyes else 'no'}  (auto = measured from the photo)")
         return upscale(scene, 4, "scale2x")
 
