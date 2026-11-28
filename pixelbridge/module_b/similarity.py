@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from ..core.color import rgb_to_yuv
+
 # Weights on |dY|, |dU|, |dV| (luminance weighted most), on 0..255-scaled YUV.
 # Tune them and report the final values.
 YUV_WEIGHTS = (48.0, 7.0, 6.0)
@@ -19,10 +21,17 @@ def yuv_distance(a: np.ndarray, b: np.ndarray, weights=YUV_WEIGHTS) -> np.ndarra
     distance = wY*|dY| + wU*|dU| + wV*|dV|.
     Returns float32 of shape (...). Must be 0 for identical colors and symmetric.
     """
-    raise NotImplementedError("TODO(M4): yuv_distance")
+    a = np.asarray(a)
+    b = np.asarray(b)
+    if a.shape != b.shape:
+        raise ValueError(f"shape mismatch: {a.shape} vs {b.shape}")
+    # YUV is in [0, 1] (U, V centered at 0); scale to 0..255 to match the weights.
+    d = np.abs(rgb_to_yuv(a) - rgb_to_yuv(b)) * 255.0
+    wy, wu, wv = weights
+    return (wy * d[..., 0] + wu * d[..., 1] + wv * d[..., 2]).astype(np.float32)
 
 
 def similar(a: np.ndarray, b: np.ndarray, threshold: float = 1.0) -> np.ndarray:
     """Boolean map: True where the colors are considered equal
     (yuv_distance <= threshold). Exact equality is threshold = 0."""
-    raise NotImplementedError("TODO(M4): similar")
+    return yuv_distance(a, b) <= threshold
