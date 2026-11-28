@@ -42,11 +42,13 @@ def largest_component(mask: np.ndarray, max_iter: int = 400) -> np.ndarray:
 
 # A skin region looks like a face when it is big enough, fills its bounding box
 # (a face is a solid oval, not a thin strip or a scattered texture) and is a bit
-# taller than wide. Checked on data/photos: the two photos with a face pass,
-# the 18 without one (animals, food, scenery, a crowd far away) fail.
-FACE_MIN_AREA = 0.04       # fraction of the image
-FACE_MIN_FILL = 0.50       # region pixels / bounding box pixels
-FACE_ASPECT = (0.9, 2.0)   # bounding box height / width
+# taller than wide. The region often includes the neck, chest or light hair, so
+# the limits are loose. Checked on 7 frontal portraits (all pass, the smallest
+# face covers 3% of a half-body shot) and on data/photos (16 of the 18 photos
+# without a face fail; a city skyline and a close-up of a dog pass).
+FACE_MIN_AREA = 0.025      # fraction of the image
+FACE_MIN_FILL = 0.35       # region pixels / bounding box pixels
+FACE_ASPECT = (0.9, 2.1)   # bounding box height / width
 
 
 def looks_like_face(face: np.ndarray) -> bool:
