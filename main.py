@@ -86,9 +86,10 @@ def run_chara(args) -> None:
     write_image(args.output, big)
     stem, ext = os.path.splitext(args.output)
     write_image(f"{stem}_sprite{ext or '.png'}", character.image)
-    x0, y0, x1, y1 = character.face.box
-    print(f"saved {args.output}  {big.shape[1]}x{big.shape[0]}  (character {character.image.shape[1]}x"
-          f"{character.image.shape[0]}, head box {x0} {y0} {x1} {y1})")
+    a = character.attrs
+    print(f"saved {args.output}  {big.shape[1]}x{big.shape[0]}")
+    print(f"  head box {' '.join(map(str, a.box))} | hair {a.length}, bangs {a.bangs}, part {a.part:.2f} | "
+          f"smile {'yes' if a.smile else 'no'}, happy eyes {'yes' if a.happy_eyes else 'no'}")
 
 
 def build_parser() -> argparse.ArgumentParser:
