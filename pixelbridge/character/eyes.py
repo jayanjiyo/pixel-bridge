@@ -18,8 +18,9 @@ Method
      blobs (hair and clothes are textured);
    - a similar pair just above it (the eyebrows) or a narrower pair below it
      (nostrils or mouth corners) must exist, and both add to the score;
-   - if a skin-colored region exists, the pair lies in its upper part and the
-     cheeks are skin-colored.
+   - if a skin-colored region exists, the pair lies in its upper part, both blobs
+     are inside it (not wider apart than 0.85 of its width), and the cheeks are
+     skin-colored.
 4. Two attempts. The first uses only strong blobs anywhere in the image. If it
    finds nothing (a small face: the eyes are weak blobs and hair or clothes fill
    the list), the second looks for weaker blobs near skin only, and its result
@@ -36,6 +37,9 @@ from .detect import largest_component, skin_mask
 
 WORK = 320                              # longer side of the working image
 SCALES = (1.2, 1.7, 2.4, 3.4, 4.8)      # blob sizes (sigma, in working pixels)
+MIN_BELOW_TOP = 0.25                    # eyes are at least this far (eye distances) below the top of the skin
+MAX_EYE_SPAN_ROW = 0.9                  # eye distance / width of the skin on the eye row, at most (real: 0.3 .. 0.65)
+MAX_EYE_SPAN = 0.85                     # eye distance / width of the skin region, at most
 # (weakest DoG response, largest eye-line slope, blobs near skin only, lowest score accepted)
 ATTEMPTS = ((0.020, 0.3, False, 0.9),
             (0.012, 0.4, True, 2.4))
@@ -124,6 +128,22 @@ def find_eyes(photo: np.ndarray) -> dict | None:
             dx = p["dx"]
             if region is not None and not (region[0] <= p["my"] <= region[1] and region[2] <= p["mx"] <= region[3]):
                 continue
+            if region is not None:
+                # both eyes are INSIDE the face: not wider apart than most of the skin region, and
+                # not outside its left / right end (the hair at the two temples is a symmetric pair too)
+                skin_width = region[3] - region[2] + 1
+                if (dx > MAX_EYE_SPAN * skin_width or p["lx"] < region[2] - 0.1 * dx
+                        or p["rx"] > region[3] + 0.1 * dx):
+                    continue
+                # compared with the face width AT THE EYE ROW the limit is tighter: human eyes are
+                # about 0.45 of the face width apart
+                row = np.nonzero(comp[int(p["my"])])[0]
+                if len(row) and dx > MAX_EYE_SPAN_ROW * (row[-1] - row[0] + 1):
+                    continue
+                # and not at the very top of the skin: above the eyes there is a forehead or at
+                # least the eyebrows (a pair on the hairline is supported by the real eyes below it)
+                if p["my"] < region[0] + MIN_BELOW_TOP * dx:
+                    continue
             y0, y1 = int(p["my"] + 0.25 * dx), int(min(hh, p["my"] + 0.75 * dx))
             if y1 <= y0:
                 continue
