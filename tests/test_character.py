@@ -64,3 +64,47 @@ def test_character_near_border_is_clipped():
     c = make_character(portrait())
     scene = compose_scene(default_background(64, 48), c, x=0.0, ground=0.3)
     assert scene.shape == (48, 64, 3)
+
+
+# ------------------------------------------------------------------ attributes and templates
+from pixelbridge.character import measure_attributes, render_character  # noqa: E402
+from pixelbridge.character.hair import BANGS, HEAD_H, HEAD_W, LENGTHS, face_mask, hair_masks  # noqa: E402
+from pixelbridge.character.measure import xdog  # noqa: E402
+
+
+def test_xdog_finds_a_dark_line():
+    g = np.ones((40, 40), np.float32)
+    g[20, 5:35] = 0.0
+    lines = xdog(g) < 0.5
+    assert lines[20, 20] and not lines[5, 5]
+
+
+def test_measure_attributes_fields():
+    img = portrait()
+    a = measure_attributes(img, find_head_box(img))
+    assert a.bangs in BANGS and a.length in LENGTHS and 0 <= a.part <= 1
+    assert isinstance(a.smile, bool) and isinstance(a.happy_eyes, bool)
+    assert a.shirt[0] > a.shirt[1] + 60          # red shirt
+
+
+def test_hair_templates_all_combinations():
+    face = face_mask()
+    for length in LENGTHS:
+        for bangs in BANGS:
+            hair, below = hair_masks(length, bangs)
+            assert hair.shape == (HEAD_H, HEAD_W) and hair.dtype == bool
+            assert (face & ~hair).sum() > 40      # the face stays visible
+    full, _ = hair_masks("long", "full")
+    none, _ = hair_masks("long", "none")
+    assert (full & face).sum() > (none & face).sum()
+    assert hair_masks("long", "none")[1].sum() > hair_masks("short", "none")[1].sum() == 0
+
+
+def test_overrides_change_the_sprite():
+    img = portrait()
+    base = make_character(img)
+    edited = make_character(img, bangs="full", length="short", smile=True, happy_eyes=True)
+    assert edited.attrs.bangs == "full" and edited.attrs.length == "short"
+    assert edited.image.shape != base.image.shape or (edited.image != base.image).any()
+    again = render_character(edited.attrs)        # rendering is deterministic
+    assert np.array_equal(again.image, edited.image)
